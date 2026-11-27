@@ -36,4 +36,3 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -v
       - run: python -m examples.demonstrations --output-dir generated
-      - run: python -m examples.transport --output generated/transport.png

@@ -1,146 +1,105 @@
-"""Dense Broyden iteration with residual-based trust-region acceptance."""
-
-from collections.abc import Callable
-from dataclasses import dataclass
+"""Broyden iteration with a residual-based trust-region radius."""
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 
-FloatArray = NDArray[np.float64]
-VectorFunction = Callable[[FloatArray], ArrayLike]
+def calculate_norm(vector, order=2):
+    if order == 1:
+        return np.sum(np.abs(vector))
+    elif order == 2:
+        return np.sqrt(np.sum(vector**2))
+    else:
+        raise ValueError("Unsupported norm order")
 
+def lu_decomposition(A):
+    n = A.shape[0]
+    L = np.eye(n)  # Initialize L as identity matrix
+    U = A.copy()   # Initialize U as a copy of A
 
-@dataclass(frozen=True)
-class BroydenResult:
-    """Final iterate, stopping reason, and residual norms at accepted iterates."""
+    for i in range(n):
+        # Update rows below the pivot
+        factors = U[i+1:, i] / U[i, i]
+        L[i+1:, i] = factors
+        U[i+1:] -= np.outer(factors, U[i])
 
-    x: FloatArray
-    accepted_steps: int
-    trial_steps: int
-    residual_norms: tuple[float, ...]
-    status: str
+    return L, U
 
-    @property
-    def converged(self) -> bool:
-        return self.status == "converged"
+def solve_lu(L, U, b):
+    n = len(b)
 
+    # Forward substitution to solve L * y = b
+    y = np.zeros(n)
+    for i in range(n):
+        y[i] = b[i] - np.dot(L[i, :i], y[:i])
 
-def _vector(values: ArrayLike, name: str) -> FloatArray:
-    vector = np.asarray(values, dtype=float)
-    if vector.ndim != 1 or vector.size == 0 or not np.all(np.isfinite(vector)):
-        raise ValueError(f"{name} must be a nonempty, finite vector")
-    return vector
+    # Backward substitution to solve U * x = y
+    x = np.zeros(n)
+    for i in range(n - 1, -1, -1):
+        x[i] = (y[i] - np.dot(U[i, i+1:], x[i+1:])) / U[i, i]
 
+    return x
 
-def _residual(func: VectorFunction, x: FloatArray) -> FloatArray:
-    values = _vector(func(x), "residual")
-    if values.shape != x.shape:
-        raise ValueError("residual must have the same shape as x")
-    return values
+def broyden_trust_region(func, grad, x0, epsilon=1e-12, rho=0.1, c=0.5, max_iter=100):
+    def trust_region_subproblem(B, F, delta):
 
+        L, U = lu_decomposition(B)
+        d = solve_lu(L, U, -F)
 
-def calculate_jacobian(func: VectorFunction, x: ArrayLike, delta: float = 1e-5) -> FloatArray:
-    """Estimate the Jacobian of a square system with scaled centered differences."""
-    point = _vector(x, "x")
-    if not np.isfinite(delta) or delta <= 0:
-        raise ValueError("delta must be finite and positive")
-    jacobian = np.empty((point.size, point.size))
-    for column, value in enumerate(point):
-        step = delta * max(1.0, abs(value))
-        left, right = point.copy(), point.copy()
-        left[column] -= step
-        right[column] += step
-        span = right[column] - left[column]
-        if span == 0 or not np.isfinite(span):
-            raise ValueError("delta does not yield a finite, representable difference")
-        right_residual = _residual(func, right).copy()
-        jacobian[:, column] = (right_residual - _residual(func, left)) / span
-    return jacobian
+        if calculate_norm(d) <= delta:
+            return d
+        else:
+            return delta * d / calculate_norm(d)
 
+    def actual_reduction(func, xk, d):
+        """Calculate actual reduction."""
+        return (func(xk).T @ func(xk) - func(xk + d).T @ func(xk + d))
 
-def solve_nonlinear(
-    func: VectorFunction,
-    x0: ArrayLike,
-    grad: VectorFunction | None = None,
-    *,
-    epsilon: float = 1e-12,
-    rho: float = 0.1,
-    c: float = 0.5,
-    max_iter: int = 100,
-) -> BroydenResult:
-    """Solve F(x) = 0 using at most max_iter trial steps.
+    def predicted_reduction(Fk, Bk, d):
+        """Calculate predicted reduction."""
+        return (-Fk.T @ d - 0.5 * d.T @ Bk @ d)
 
-    The residual history includes the initial norm. A status of
-    `stagnated` indicates the trial step cannot change the iterate.
-    """
-    if not (np.isfinite(epsilon) and epsilon > 0 and 0 < rho < 1 and 0 < c < 1):
-        raise ValueError("require epsilon > 0 and rho and c in (0, 1)")
-    if max_iter < 0:
-        raise ValueError("max_iter must be nonnegative")
+    xk = x0
+    Bk = grad(x0)  # Initial Jacobian approximation
+    delta = c * calculate_norm(func(xk))  # Initial trust region radius
+    iter_count = 0
 
-    x = _vector(x0, "x0").copy()
-    residual = _residual(func, x).copy()
-    history = [float(np.linalg.norm(residual))]
-    trials = 0
-    status = "converged" if history[-1] <= epsilon else "trial_limit"
-    if status == "converged" or max_iter == 0:
-        return BroydenResult(x, 0, trials, tuple(history), status)
-
-    matrix = np.array(grad(x) if grad else calculate_jacobian(func, x), dtype=float, copy=True)
-    if matrix.shape != (x.size, x.size) or not np.all(np.isfinite(matrix)):
-        raise ValueError("Jacobian must be a finite square matrix matching x")
-    radius = c * max(1.0, float(np.linalg.norm(x)))
-    for trials in range(1, max_iter + 1):
-        # SVD-based least squares also gives a direction for rank-deficient models.
-        step = np.linalg.lstsq(matrix, -residual, rcond=None)[0]
-        length = np.linalg.norm(step)
-        if length > radius:
-            step *= radius / length
-        candidate = x + step
-        if np.array_equal(candidate, x):
-            status = "stagnated"
-            break
-        step = candidate - x
-        model = residual + matrix @ step
-        # Factored differences avoid subtracting two nearly equal squared norms.
-        predicted = float((residual - model) @ (residual + model))
-        trial_values = np.asarray(func(candidate), dtype=float)
-        if trial_values.shape != x.shape:
-            raise ValueError("residual must have the same shape as x")
-        if not np.all(np.isfinite(trial_values)) or predicted <= 0:
-            radius *= c
-            continue
-        actual = float((residual - trial_values) @ (residual + trial_values))
-        ratio = actual / predicted
-        if not np.isfinite(ratio) or ratio < rho:
-            radius *= c
-            continue
-
-        if ratio < 0.25:
-            radius *= c
-        elif ratio > 0.75 and length >= 0.9 * radius:
-            radius /= c
-        step_norm = np.linalg.norm(step)
-        direction = step / step_norm
-        matrix += np.outer((trial_values - residual - matrix @ step) / step_norm, direction)
-        x, residual = candidate, trial_values.copy()
-        history.append(float(np.linalg.norm(residual)))
-        if history[-1] <= epsilon:
-            status = "converged"
+    while iter_count < max_iter:
+        Fk = func(xk)
+        if calculate_norm(Fk) <= epsilon:
+            print("Converged!")
             break
 
-    return BroydenResult(x, len(history) - 1, trials, tuple(history), status)
+        # Solve the trust region subproblem
+        d = trust_region_subproblem(Bk, Fk, delta)
 
+        # Compute the ratio
+        ared = actual_reduction(func, xk, d)
+        pred = predicted_reduction(Fk, Bk, d)
+        rk = ared / pred if pred != 0 else -1
 
-def broyden_trust_region(
-    func: VectorFunction,
-    grad: VectorFunction,
-    x0: ArrayLike,
-    epsilon: float = 1e-12,
-    rho: float = 0.1,
-    c: float = 0.5,
-    max_iter: int = 100,
-) -> tuple[FloatArray, int]:
-    """Return the final iterate and accepted-step count using the original API."""
-    result = solve_nonlinear(func, x0, grad, epsilon=epsilon, rho=rho, c=c, max_iter=max_iter)
-    return result.x, result.accepted_steps
+        if rk >= rho:
+            xk = xk + d
+        else:
+            delta *= c  # Reduce trust region radius
+            continue
+
+        # Update Bk using Broyden's formula
+        sk = d
+        yk = func(xk) - Fk
+        Bk += (yk - Bk @ sk).reshape(-1, 1) @ sk.reshape(1, -1) / (sk.T @ sk)
+
+        # Reset the trust region radius and increment iteration
+        delta = c * calculate_norm(func(xk))
+        iter_count += 1
+
+    return xk, iter_count
+
+def calculate_jacobian(func, x, delta=1e-5):
+    n = x.shape[0]
+    J = np.zeros((n, n))
+    for i in range(n):
+        x_plus = x.copy()
+        x_minus = x.copy()
+        x_plus[i] += delta
+        x_minus[i] -= delta
+        J[:, i] = (func(x_plus) - func(x_minus)) / (2 * delta)
+    return J
