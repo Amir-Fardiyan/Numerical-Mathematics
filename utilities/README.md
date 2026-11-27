@@ -1,138 +1,60 @@
-# utilities — A tiny grab‑bag of numerical helpers
+# Numerical utilities
 
-*A compact, classroom‑style set of static methods wrapped in a single `utilities` class. Clean, dependency‑light, and easy to drop into small projects or coursework.*
+Import functions from `numerical_math`. Existing code can continue to import `utilities` from `utilities.Utilities`.
 
----
+## Gauss–Seidel
 
-## Why this exists
-When you’re prototyping or solving homework‑sized problems, you don’t always want to pull in big libraries or wire up a full package. This repo gives you a single `utilities` class containing a few classic algorithms:
+For $Ax=b$, each sweep uses the latest updates below the diagonal and the previous values above it.
 
-* Bubble sort for 1D lists (`sort1D`) and paired 2D lists (`sort2D`)
-* Gauss–Seidel linear solver (`gauss_sidel`)
-* Natural cubic spline coefficient builder (`cubic_spline`) and evaluator (`cubic_spline_interpolate`)
-* Bairstow’s method for polynomial roots (`bairstow_EoS`)
+$$
+x_i^{(k+1)}=
+\frac{b_i-\sum_{j<i}a_{ij}x_j^{(k+1)}-\sum_{j>i}a_{ij}x_j^{(k)}}{a_{ii}}.
+$$
 
-They’re intentionally simple and readable (great for learning), and shipped as `@staticmethod`s so you can call them without instantiating the class.
-
----
-
-
-## Usage
-### 1) Sorting
-
-#### `utilities.sort1D(u)`
-
-Bubble‑sorts a single list **in place** and returns it.
+Strict row diagonal dominance and symmetric positive definiteness are sufficient conditions for convergence. Start at zero and stop when the infinity norm of the component update falls below `max_err` or the sweep limit is reached. Check the residual independently.
 
 ```python
-nums = [5, 2, 9, 1]
-utilities.sort1D(nums)           # -> [1, 2, 5, 9]  (nums is also mutated)
+import numpy as np
+from numerical_math import gauss_sidel
+
+A = np.array([[4, 1], [2, 3]])
+b = np.array([1, 2])
+x = gauss_sidel(A, b, max_it=100, max_err=1e-12)
+print(x, np.linalg.norm(A @ x - b))
 ```
 
-#### `utilities.sort2D(u, v)`
+## Natural cubic spline
 
-Bubble‑sorts list `u` ascending and **reorders `v` in lock‑step** (think x/y pairs).
+On each interval, with offset $t=x-x_i$, the interpolant is $a_it^3+b_it^2+c_it+d_i$. Its second derivatives $M_i$ satisfy a tridiagonal system with natural boundary conditions $M_0=M_{n-1}=0$. For interior knots, with $h_i=x_{i+1}-x_i$,
+
+$$
+h_{i-1}M_{i-1}+2(h_{i-1}+h_i)M_i+h_iM_{i+1}
+=6\left[\frac{y_{i+1}-y_i}{h_i}-\frac{y_i-y_{i-1}}{h_{i-1}}\right].
+$$
+
+`cubic_spline(x, y)` sorts both lists in place and solves this system by tridiagonal elimination. `cubic_spline_interpolate` returns the value and first two derivatives, or `None` outside the knot range.
+
+![Natural cubic spline through nonuniform samples of sin(x)](../docs/figures/interpolation.png)
+
+## Bairstow’s method
+
+Given real coefficients in descending degree order, Bairstow iteration adjusts $r,s$ to make the synthetic-division remainders $R_1,R_0$ vanish.
+
+$$
+P(x)=(x^2-rx-s)Q(x)+R_1(x-r)+R_0.
+$$
+
+The solver normalizes coefficients before each deflation and uses a companion-matrix solve when a correction is singular, the iteration budget is exhausted, or the final roots fail a coefficient-scaled residual check. Repeated roots and polynomials with widely separated scales can be ill-conditioned. Root ordering is unspecified.
 
 ```python
-x = [3, 1, 2]
-y = [30, 10, 20]
-ux, uy = utilities.sort2D(x, y)  # -> [1, 2, 3], [10, 20, 30]
+import numpy as np
+from numerical_math import bairstow
+
+coefficients = [1, -2, 1, -2]  # (x - 2)(x² + 1)
+roots = bairstow(coefficients, max_it=100, err=1e-12)
+print(roots, np.abs(np.polyval(coefficients, roots)))
 ```
 
-> **Complexity:** Both sorts are ~O(n²). Good for small lists; prefer Python’s built‑in `sorted()` for performance.
+## Sorting
 
----
-
-### 2) Linear systems — Gauss–Seidel
-
-#### `utilities.gauss_sidel(A, b, max_it, max_err)`
-
-Iterative solver for `Ax = b`.
-
-```python
-A = [[4, 1],
-     [2, 3]]
-b = [1, 2]
-x = utilities.gauss_sidel(A, b, max_it=1000, max_err=1e-6)
-print(x)  # e.g. [0.0909..., 0.6363...]
-```
-
-**Notes**
-
-* Starts from the zero vector; stops when all component‑wise updates are `< max_err` or `max_it` is hit.
-* Requires non‑singular `A`. Convergence typically needs diagonally dominant or symmetric positive‑definite matrices.
-
----
-
-### 3) Interpolation — Natural cubic spline
-
-#### `utilities.cubic_spline(x, y)` → `(a, b, c, d)`
-
-Builds natural spline coefficients for consecutive intervals `[x[i], x[i+1]]`. Internally it sorts `x, y` by `x`.
-
-```python
-x = [0.0, 1.0, 2.0, 3.0]
-y = [0.0, 0.5, 2.0, 1.5]
-a, b, c, d = utilities.cubic_spline(x, y)
-```
-
-#### `utilities.cubic_spline_interpolate(x, a, b, c, d, x_val)`
-
-Evaluates the spline and its first two derivatives at `x_val`.
-
-```python
-val, d1, d2 = utilities.cubic_spline_interpolate(x, a, b, c, d, 1.6)
-print(val, d1, d2)
-```
-
-**Notes**
-
-* Natural boundary conditions (`M[0]=M[-1]=0`).
-* No extrapolation guard: calling outside `[x[0], x[-1]]` returns `None`.
-
----
-
-### 4) Polynomial roots — Bairstow
-
-#### `utilities.bairstow_EoS(coefficients, max_it, err)`
-
-Finds (possibly complex) roots of a polynomial using Bairstow’s method.
-
-```python
-# 2x^3 - 4x^2 - 22x + 24 = 0
-coeffs = [2, -4, -22, 24]  # highest degree -> constant
-roots = utilities.bairstow_EoS(coeffs, max_it=1000, err=1e-6)
-print(roots)  # numpy array of roots
-```
-
-**Important arguments & behavior**
-
-* Pass coefficients **from highest degree to constant**. Internally they’re reversed to match the original implementation.
-* Initial quadratic guess uses `r = s = -1`.
-* Returns a NumPy array of roots. Install NumPy if you plan to use this function.
-
----
-
-## API reference
-
-| Method       | Signature                                        | Mutates inputs  | Returns                |
-| ------------ | ------------------------------------------------ | --------------- | ---------------------- |
-| Sort 1D      | `sort1D(u)`                                      | ✅               | sorted list `u`        |
-| Sort 2D      | `sort2D(u, v)`                                   | ✅               | `(u, v)` sorted by `u` |
-| Gauss–Seidel | `gauss_sidel(A, b, max_it, max_err)`             | ❌               | list `x`               |
-| Cubic spline | `cubic_spline(x, y)`                             | ✅ (sorts `x,y`) | `(a, b, c, d)`         |
-| Spline eval  | `cubic_spline_interpolate(x, a, b, c, d, x_val)` | ❌               | `(value, d1, d2)`      |
-| Bairstow     | `bairstow_EoS(coeffs, max_it, err)`              | ❌               | `np.array` of roots    |
-
-> **Mutation gotcha:** `sort1D`, `sort2D`, and `cubic_spline` modify the lists you pass in. If you need the originals, pass copies.
-
----
-
-## Limitations & tips
-
-* **Performance:** Sorts are O(n²). Use Python’s `sorted()` / `list.sort()` for large lists.
-* **Stability:** Gauss–Seidel convergence isn’t guaranteed for arbitrary `A`. Consider pre‑checking diagonal dominance.
-* **Input safety:** No explicit input validation. For production, add shape checks and better error messages.
-* **Numerical sensitivity:** Bairstow can be sensitive to initial guesses and scaling.
-
----
+`sort1d` sorts a list in place. `sort_pairs` applies the same stable permutation to both lists, preserving input order for ties. The legacy names are `sort1D` and `sort2D`.
