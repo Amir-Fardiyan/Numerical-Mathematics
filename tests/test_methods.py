@@ -184,7 +184,7 @@ class PolynomialTests(unittest.TestCase):
         self.assertTrue(roots_solver.called)
         self.assertLessEqual(max(len(call.args[0]) for call in roots_solver.call_args_list), 3)
 
-    def test_repeated_root_and_legacy_real_dtype(self):
+    def test_repeated_root_and_real_dtype(self):
         roots = bairstow([1, -6, 12, -8], 0, 1e-12)
         self.assertEqual(roots.size, 3)
         assert_allclose(roots, 2, atol=1e-4)

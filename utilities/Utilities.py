@@ -1,13 +1,9 @@
-"""Original utility class backed by the maintained package."""
-
 from numerical_math import bairstow, cubic_spline, cubic_spline_interpolate, gauss_sidel
 from numerical_math import sort1d, sort_pairs
 from numpy.typing import ArrayLike
 
 
 class utilities:
-    """Preserve the original method names and keyword arguments."""
-
     @staticmethod
     def sort1D(u):
         return sort1d(u)

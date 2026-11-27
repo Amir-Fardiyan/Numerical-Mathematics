@@ -1,7 +1,5 @@
 # Numerical utilities
 
-Import functions from `numerical_math`. Existing code can continue to import `utilities` from `utilities.Utilities`.
-
 ## Gauss–Seidel
 
 For $Ax=b$, each sweep uses the latest updates below the diagonal and the previous values above it.
@@ -54,7 +52,3 @@ coefficients = [1, -2, 1, -2]  # (x - 2)(x² + 1)
 roots = bairstow(coefficients, max_it=100, err=1e-12)
 print(roots, np.abs(np.polyval(coefficients, roots)))
 ```
-
-## Sorting
-
-`sort1d` sorts a list in place. `sort_pairs` applies the same stable permutation to both lists, preserving input order for ties. The legacy names are `sort1D` and `sort2D`.
