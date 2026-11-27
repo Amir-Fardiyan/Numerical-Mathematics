@@ -34,7 +34,7 @@ $$
 
 `cubic_spline(x, y)` sorts both lists in place and solves this system by tridiagonal elimination. `cubic_spline_interpolate` returns the value and first two derivatives, or `None` outside the knot range.
 
-![Natural cubic spline through nonuniform samples of sin(x)](../docs/figures/interpolation.png)
+![Natural cubic spline through nonuniform samples of sin(x)](figures/interpolation.png)
 
 ## Bairstow’s method
 

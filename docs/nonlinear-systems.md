@@ -1,6 +1,6 @@
 # Broyden trust-region methods
 
-Amir Fardiyan’s [original solver at revision 566271f](https://github.com/Amir-Fardiyan/Numerical-Mathematics/blob/566271fe4a9f8d1863c373ffa2e5702cbd40c6f4/Nonlinear%20systems/Broyden-TrustRegion.py) used a prescribed acceptance denominator and a residual-based radius reset. The [review branch solver](../numerical_math/nonlinear.py) retains the root equation, radial step scaling, and Broyden rank-one update, and changes several rules that determine its iterates. The [mathematical audit](METHOD-AUDIT.md) records both algorithms and the reasons for the changes. The algorithm below describes the review branch. The legacy function name currently delegates to that implementation.
+Amir Fardiyan’s [original solver at revision 566271f](https://github.com/Amir-Fardiyan/Numerical-Mathematics/blob/566271fe4a9f8d1863c373ffa2e5702cbd40c6f4/Nonlinear%20systems/Broyden-TrustRegion.py) used a prescribed acceptance denominator and a residual-based radius reset. The [review branch solver](../numerical_math/nonlinear.py) retains the root equation, radial step scaling, and Broyden rank-one update, and changes several rules that determine its iterates. The [mathematical audit](method-audit.md) records both algorithms and the reasons for the changes. The algorithm below describes the review branch. The legacy function name currently delegates to that implementation.
 
 ## Problem and initialization
 
@@ -56,7 +56,7 @@ Radial truncation projects $d$ onto the Euclidean ball along its ray. The exact 
 \lambda(\Vert p\Vert_2^2-\Delta^2)=0.
 ```
 
-The radial step need not satisfy these conditions. The [audit](METHOD-AUDIT.md#radial-clipping-and-the-constrained-model) gives a two-dimensional counterexample.
+The radial step need not satisfy these conditions. The [audit](method-audit.md#radial-clipping-and-the-constrained-model) gives a two-dimensional counterexample.
 
 ## Actual and predicted reductions
 
@@ -204,7 +204,19 @@ The acceptance inequality shows decrease on accepted steps in exact arithmetic. 
 
 ## Examples
 
-The [circle–line example](../README.md#quick-start) solves $F(x,y)=(x^2+y^2-1,\ x-y)$ from $(0.8,0.3)$. Inspect the final residual and status even if the iterate visually agrees with the known intersection.
+The circle–line example solves $F(x,y)=(x^2+y^2-1,\ x-y)$ from $(0.8,0.3)$.
+
+```python
+from numerical_math import solve_nonlinear
+
+
+def residual(x):
+    return [x @ x - 1, x[0] - x[1]]
+
+
+result = solve_nonlinear(residual, [0.8, 0.3])
+print(result.x, result.status, result.residual_norms[-1])
+```
 
 The [transport demo](../examples/transport.py) uses a unit inlet $`S_0=1`$ with the unknowns indexed from $1$ through $N$. The vector contains these $N$ unknowns only. With $q=2+e$ and the flux $`\phi(v)=v^q/[v^q+M(1-v)^q]`$ for $v$ in $`[0,1]`$, the review-branch residual is
 
@@ -223,11 +235,11 @@ g(s)=\frac{qM[s(1-s)]^{q-1}}
 
 The implementation gives zero outside that interval, including the endpoints for this value of $q$. The demo defaults to $N=500$, $\Delta t=0.01$, $e=0.1167$, $M=1.1177$, and all initial unknowns set to $10^{-8}$. The original demo instead initialized its Jacobian by fixed centered differences and used a lower clipping bound of $10^{-50}$.
 
-![Saturation by cell in the 500-cell review branch transport example](../docs/figures/transport.png)
+![Saturation by cell in the 500-cell review branch transport example](figures/transport.png)
 
 ## Changes from the historical implementation
 
-The [historical source and comparison table](METHOD-AUDIT.md#comparison) document each change and its rationale. In revision `566271f`, the solver initialized $B$ from the required callback and the transport demo used fixed centered differences. The historical search direction solved $Bd=-f$ with unpivoted LU. Its acceptance denominator was $-f^\top p-\frac{1}{2}p^\top Bp$. It used any nonzero denominator in the ratio, initialized and reset its radius after acceptance to $`c\Vert F(x)\Vert_2`$, and capped accepted steps only.
+The [historical source and comparison table](method-audit.md#comparison) document each change and its rationale. In revision `566271f`, the solver initialized $B$ from the required callback and the transport demo used fixed centered differences. The historical search direction solved $Bd=-f$ with unpivoted LU. Its acceptance denominator was $-f^\top p-\frac{1}{2}p^\top Bp$. It used any nonzero denominator in the ratio, initialized and reset its radius after acceptance to $`c\Vert F(x)\Vert_2`$, and capped accepted steps only.
 
 The review branch introduces coordinate-scaled differences and rank-aware least squares, uses the realized displacement in the reductions and secant update, changes the reduction model and acceptance guards, adopts the state-scaled initial radius and ratio-based accepted-step radius rule, and caps trial entries. It tests initial and final accepted residuals, detects an unchanged iterate, and uses an analytic initial Jacobian and a zero lower flux clipping bound in the transport demo. The original nonlinear target, radial clipping rule, actual-reduction identity, rejection contraction, residual tolerance test, and good Broyden update remain identifiable in both versions. The audit records the differences in their finite-precision evaluation and includes reproducible cases where the iterations diverge.
 

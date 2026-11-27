@@ -1,6 +1,6 @@
 # Mathematical audit of the Broyden trust-region solver
 
-The original implementation is Amir Fardiyan’s [source at revision 566271f](https://github.com/Amir-Fardiyan/Numerical-Mathematics/blob/566271fe4a9f8d1863c373ffa2e5702cbd40c6f4/Nonlinear%20systems/Broyden-TrustRegion.py). Its [original accompanying README](https://github.com/Amir-Fardiyan/Numerical-Mathematics/blob/566271fe4a9f8d1863c373ffa2e5702cbd40c6f4/Nonlinear%20systems/README.md) corroborates the original reduction formula and accepted-step radius reset. The comparison uses the review-branch [solver](../numerical_math/nonlinear.py), [legacy entry point](Broyden-TrustRegion.py), and [transport demo](../examples/transport.py). The prior redesign documentation largely described the review-branch equations, but omitted their provenance and how significantly they diverged from the original.
+The original implementation is Amir Fardiyan’s [source at revision 566271f](https://github.com/Amir-Fardiyan/Numerical-Mathematics/blob/566271fe4a9f8d1863c373ffa2e5702cbd40c6f4/Nonlinear%20systems/Broyden-TrustRegion.py). Its [original accompanying README](https://github.com/Amir-Fardiyan/Numerical-Mathematics/blob/566271fe4a9f8d1863c373ffa2e5702cbd40c6f4/Nonlinear%20systems/README.md) corroborates the original reduction formula and accepted-step radius reset. The comparison uses the review-branch [solver](../numerical_math/nonlinear.py), [legacy entry point](../Nonlinear%20systems/Broyden-TrustRegion.py), and [transport demo](../examples/transport.py). The prior redesign documentation largely described the review-branch equations, but omitted their provenance and how significantly they diverged from the original.
 
 **Finding.** The redesign changes the acceptance model, radius policy, direction at numerical rank deficiency, and transport initialization. The two solvers can generate different iterates even for smooth scalar systems with exact Jacobians. The original radius reset and acceptance denominator are part of the historical method and require an explicit decision before any replacement. In particular, keeping the original function signature preserves caller compatibility while the current wrapper runs the revised algorithm.
 
@@ -88,7 +88,7 @@ While accepted < max_iter:
 Return x, accepted.
 ```
 
-The pseudocode assumes deterministic residual evaluations and combines repeated calls for readability. The [review-branch pseudocode](README.md#complete-pseudocode) describes the separate implementation that the draft now runs.
+The pseudocode assumes deterministic residual evaluations and combines repeated calls for readability. The [review-branch pseudocode](nonlinear-systems.md#complete-pseudocode) describes the separate implementation that the draft now runs.
 
 ## Reproduced differences
 
